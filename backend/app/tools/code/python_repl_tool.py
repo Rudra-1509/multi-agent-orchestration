@@ -12,7 +12,7 @@ def repl_func(code: str)-> str:
         results=python_repl.run(code)
         return results
     except Exception as e:
-        return f"Error in search tool: {str(e)}"
+        return f"Error in repl tool: {str(e)}"
     
 code_tool=StructuredTool.from_function(
     func=repl_func,
