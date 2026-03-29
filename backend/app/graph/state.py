@@ -1,8 +1,9 @@
-import operator
-from typing import Annotated, Sequence, TypedDict
-
-from langchain_core.messages import BaseMessage
+from typing import TypedDict,List
 
 class AgentState(TypedDict):
-    messages: Annotated[Sequence[BaseMessage], operator.add]
-    next: str
+    query: str
+    search_results: List[dict]
+    urls: List[str]
+    scraped_data: List[str]
+    processed_data: str
+    final_output: str
