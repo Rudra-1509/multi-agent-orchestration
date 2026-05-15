@@ -1,11 +1,7 @@
 import requests
-from pydantic import BaseModel
-from langchain.tools import StructuredTool
+from langchain_core.tools import tool
 from bs4 import BeautifulSoup as bs
 from playwright.sync_api import sync_playwright
-
-class ScraperInput(BaseModel):
-    url:str
 
 def bs4_scrape(url: str)->str:
     response=requests.get(url=url,timeout=10,headers={"User-Agent": "Mozilla/5.0"})
@@ -30,7 +26,9 @@ def playwright_scrape(url: str)->str:
     text = soup.get_text(separator="\n")
     return text.strip()[:3000]
 
-def smart_scrape(url: str)-> str:
+@tool
+def scrape_tool(url: str) -> str:
+    """Scrape webpage content. Uses fast scraping first, falls back to browser if needed."""
     try:
         text=bs4_scrape(url)
         if len(text) < 500 or "enable javascript" in text.lower():
@@ -38,10 +36,3 @@ def smart_scrape(url: str)-> str:
         return text
     except Exception as e:
         return f"Error in scrape tool: {str(e)}"
-    
-scrape_tool = StructuredTool.from_function(
-    func=smart_scrape,
-    name="web_scraper",
-    description="Scrape webpage content. Uses fast scraping first, falls back to browser if needed.",
-    args_schema=ScraperInput
-)

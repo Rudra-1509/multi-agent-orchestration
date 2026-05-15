@@ -1,25 +1,28 @@
-from pydantic import BaseModel
-from langchain.tools import StructuredTool
-from langchain_tavily import TavilySearchResults
+from langchain_core.tools import tool
+from langchain_tavily import TavilySearch
+import os
 
-class TavilySearchInput(BaseModel):
-    query: str
-tavily=TavilySearchResults(max_results=5,search_depth="advanced")
+# Lazy initialize - only when tool is actually invoked
+_tavily = None
 
-def search_func(query:str) ->str:
-    """
-    Performs a web search using Tavily
-    """
+def get_tavily():
+    global _tavily
+    if _tavily is None:
+        api_key = os.getenv("TAVILY_API_KEY")
+        if not api_key:
+            return None
+        _tavily = TavilySearch(max_results=5)
+    return _tavily
+
+@tool
+def search_tool(query:str) ->str:
+    """Performs a web search using Tavily."""
     try:
-        results=tavily.run(query)
-        return results
+        tavily = get_tavily()
+        if not tavily:
+            return "Error: TAVILY_API_KEY not configured"
+        results=tavily.invoke({"query": query})
+        return str(results) if isinstance(results, list) else results
     except Exception as e:
         return f"Error in search tool: {str(e)}"
-
-search_tool = StructuredTool.from_function(
-    func=search_func,
-    name="tavily_search",
-    description="Performs a web search using Tavily.",
-    args_schema=TavilySearchInput
-)
 

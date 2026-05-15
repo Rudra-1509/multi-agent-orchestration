@@ -1,7 +1,6 @@
 import os
 from typing import Literal
 from langgraph.graph import StateGraph, START, END
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv

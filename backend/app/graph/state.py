@@ -7,6 +7,7 @@ class AgentState(TypedDict, total=False):
     supervisor_reasoning: str
     supervisor_status: str
     messages: List[Dict[str, Any]]  # For conversation history
+    event_log: List[Dict[str, Any]]
     
     # Researcher States
     search_results: List[dict]

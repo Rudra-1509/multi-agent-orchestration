@@ -34,7 +34,7 @@ def get_file_tools():
 
     file_temp_tools = FileManagementToolkit(
         root_dir=TEMP_DIR,
-        selected_tools=["read_file", "write_file", "delete_file"]
+        selected_tools=["read_file", "write_file", "file_delete"]
     ).get_tools()
 
     file_log_tools = FileManagementToolkit(

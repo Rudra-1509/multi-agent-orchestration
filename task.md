@@ -12,10 +12,11 @@
 - [x] Create Supervisor Agent node with conditional routing
 - [x] Compile the `StateGraph` and implement a memory checkpointer
 
-## Phase 3: Backend - API [ ]
-- [ ] Create REST endpoints for creating/managing agent threads
-- [ ] Implement Server-Sent Events (SSE) or WebSockets to stream graph events to the client
-- [ ] Implement a Human-in-the-Loop endpoint to approve actions
+## Phase 3: Backend - API [✅]
+- [x] Create REST endpoints for creating/managing agent threads
+- [x] Implement Server-Sent Events (SSE) to stream graph events to the client
+- [x] Implement task queuing and background execution
+- [x] Add CORS support for frontend communication
 
 ## Phase 4: Frontend Development [ ]
 - [ ] Create the main layout and chat interface
