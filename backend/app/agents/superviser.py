@@ -1,3 +1,5 @@
+import json
+import os
 from typing import Literal
 from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import HumanMessage
@@ -11,7 +13,6 @@ from app.agents.subagents.writer import build_graph as build_writer
 from app.agents.subagents.analyst import build_graph as build_analyst
 
 from langchain_groq import ChatGroq
-import os
 
 load_dotenv()
 
@@ -81,19 +82,10 @@ Respond with a JSON object: {{"agent": "...", "reasoning": "..."}}"""
     try:
         response = get_llm().invoke([HumanMessage(content=routing_prompt)])
         
-        # Parse LLM response
-        import json
         response_text = response.content.strip()
-        
-        # Try to extract JSON from response
-        if "{" in response_text and "}" in response_text:
-            json_str = response_text[response_text.find("{"):response_text.rfind("}")+1]
-            decision = json.loads(json_str)
-            selected_agent = decision.get("agent", "end")
-            reasoning = decision.get("reasoning", "Task routing decision made")
-        else:
-            selected_agent = "end"
-            reasoning = "Unable to parse routing decision"
+        decision = RouteDecision.model_validate_json(response_text)
+        selected_agent = decision.agent
+        reasoning = decision.reasoning
             
     except Exception as e:
         selected_agent = "end"

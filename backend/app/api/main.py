@@ -1,8 +1,10 @@
 import asyncio
 import json
+import os
 import threading
 import uuid
-from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
@@ -15,15 +17,19 @@ from app.graph.state import AgentState
 
 app = FastAPI(title="Multi-Agent Orchestration API")
 
+DEFAULT_CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:5173",
+]
+cors_origins_env = os.getenv("CORS_ALLOW_ORIGINS", "")
+ALLOW_ORIGINS = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()] or DEFAULT_CORS_ORIGINS
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000", 
-        "http://127.0.0.1:3000",
-        "http://localhost:8080",   
-        "http://127.0.0.1:8080",   
-        "http://localhost:5173"    
-                   ],
+    allow_origins=ALLOW_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
@@ -33,6 +39,8 @@ TaskStore = Dict[str, Any]
 _tasks: TaskStore = {}
 _tasks_lock = threading.Lock()
 _supervisor_graph = build_graph()
+TASK_TTL_SECONDS = int(os.getenv("TASK_TTL_SECONDS", "3600"))
+TASK_TIMEOUT_SECONDS = int(os.getenv("TASK_TIMEOUT_SECONDS", "120"))
 
 
 class TaskCreate(BaseModel):
@@ -94,7 +102,20 @@ def append_task_event(task: TaskStore, agent: str, event: str, message: str) -> 
         task["last_updated"] = now_iso()
 
 
+def cleanup_expired_tasks() -> None:
+    cutoff = datetime.utcnow() - timedelta(seconds=TASK_TTL_SECONDS)
+    with _tasks_lock:
+        expired = [
+            task_id
+            for task_id, task in _tasks.items()
+            if datetime.fromisoformat(task.get("last_updated", task["created_at"]).replace("Z", "")) < cutoff
+        ]
+        for task_id in expired:
+            _tasks.pop(task_id, None)
+
+
 def run_task(task_id: str) -> None:
+    cleanup_expired_tasks()
     task = get_task(task_id)
     with _tasks_lock:
         task["status"] = "running"
@@ -108,6 +129,12 @@ def run_task(task_id: str) -> None:
 
     append_task_event(task, "supervisor", "routing", "Evaluating worker route")
     try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                _supervisor_graph.invoke,
+                {"query": task["query"], "messages": task["messages"], "event_log": []},
+            )
+            graph_output = future.result(timeout=TASK_TIMEOUT_SECONDS)
         graph_output = _supervisor_graph.invoke(
             {"query": task["query"], "messages": task["messages"], "event_log": []}
         )
@@ -126,6 +153,12 @@ def run_task(task_id: str) -> None:
             if selected_agent != "end":
                 append_task_event(task, selected_agent, "completed", f"{selected_agent.capitalize()} finished execution")
         append_task_event(task, "aggregate", "completed", "Aggregation complete")
+    except FuturesTimeoutError:
+        with _tasks_lock:
+            task["status"] = "failed"
+            task["finished_at"] = now_iso()
+        append_task_event(task, "supervisor", "error", f"Task timed out after {TASK_TIMEOUT_SECONDS} seconds")
+        return
     except Exception as exc:
         with _tasks_lock:
             task["status"] = "failed"
@@ -161,6 +194,7 @@ def create_task(
 
     with _tasks_lock:
         _tasks[task_id] = task
+    cleanup_expired_tasks()
 
     background_tasks.add_task(run_task, task_id)
     append_task_event(task, "system", "queued", "Task created and queued for execution")

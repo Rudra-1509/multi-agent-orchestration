@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { AgentInfo, AgentStatus, Artifact, Session, StreamEvent } from "@/types/orchestration";
+import type { AgentInfo, AgentStatus, Artifact, EventType, Session, StreamEvent } from "@/types/orchestration";
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const EVENT_TYPES: EventType[] = ["agent_start", "agent_thought", "tool_start", "tool_end", "agent_output", "require_approval", "artifact", "agent_complete"];
 
 interface OrchestrationState {
   events: StreamEvent[];
@@ -73,19 +74,21 @@ export function OrchestrationProvider({ children }: { children: ReactNode }) {
     source.onmessage = (ev) => {
       try {
         const data = JSON.parse(ev.data) as Record<string, unknown>;
+        const eventType: EventType = EVENT_TYPES.includes(data.event as EventType) ? (data.event as EventType) : "agent_thought";
         const event: StreamEvent = {
-          event: String(data.event || "agent_thought"),
-          agent_name: String(data.agent || "System"),
-          timestamp: String(data.timestamp || new Date().toISOString()),
-          data: String(data.message || ""),
+          id: crypto.randomUUID(),
+          event: eventType,
+          agent_name: typeof data.agent === "string" ? data.agent : "System",
+          timestamp: typeof data.timestamp === "string" ? data.timestamp : new Date().toISOString(),
+          data: typeof data.message === "string" ? data.message : "",
         };
 
         setEvents((prev) => [...prev, event]);
 
         // Update agent status based on event type
-        if (data.event === "started") setAgentStatus(String(data.agent), "active");
-        if (data.event === "completed") setAgentStatus(String(data.agent), "complete");
-        if (data.event === "error") setAgentStatus(String(data.agent), "error");
+        if (data.event === "started") setAgentStatus(typeof data.agent === "string" ? data.agent : "Supervisor", "active");
+        if (data.event === "completed") setAgentStatus(typeof data.agent === "string" ? data.agent : "Supervisor", "complete");
+        if (data.event === "error") setAgentStatus(typeof data.agent === "string" ? data.agent : "Supervisor", "error");
       } catch (parseError) {
         console.error("Failed to parse SSE event", parseError);
       }
@@ -94,13 +97,47 @@ export function OrchestrationProvider({ children }: { children: ReactNode }) {
     source.addEventListener("done", () => {
       setIsStreaming(false);
       source.close();
+      if (eventSourceRef.current === source) {
+        eventSourceRef.current = null;
+      }
     });
 
     source.onerror = () => {
       setError("Connection lost while streaming task events.");
       setIsStreaming(false);
       source.close();
+      if (eventSourceRef.current === source) {
+        eventSourceRef.current = null;
+      }
     };
+  };
+
+  const createTaskWithRetry = async (prompt: string, retries = 3): Promise<{ task_id: string }> => {
+    let attempt = 0;
+    let lastError: unknown = null;
+    while (attempt < retries) {
+      try {
+        const response = await fetch(`${API_BASE}/api/task`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            query: prompt,
+            messages: [{ role: "user", content: prompt }],
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(`Server returned ${response.status}`);
+        }
+        return await response.json() as { task_id: string };
+      } catch (err) {
+        lastError = err;
+        attempt += 1;
+        if (attempt < retries) {
+          await new Promise((resolve) => setTimeout(resolve, 300 * 2 ** attempt));
+        }
+      }
+    }
+    throw lastError ?? new Error("Task creation failed");
   };
 
   const start = async (prompt: string) => {
@@ -114,6 +151,7 @@ export function OrchestrationProvider({ children }: { children: ReactNode }) {
       setAgentStatus("Supervisor", "active");
       setEvents([
         {
+          id: crypto.randomUUID(),
           event: "agent_thought",
           agent_name: "Supervisor",
           timestamp: new Date().toISOString(),
@@ -121,21 +159,7 @@ export function OrchestrationProvider({ children }: { children: ReactNode }) {
         },
       ]);
 
-      // Create the task on the backend
-      const response = await fetch(`${API_BASE}/api/task`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: prompt,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
-      }
-
-      const payload = await response.json() as { task_id: string };
+      const payload = await createTaskWithRetry(prompt);
       setTaskId(payload.task_id);
 
       // Subscribe to live events
@@ -153,6 +177,7 @@ export function OrchestrationProvider({ children }: { children: ReactNode }) {
     setEvents((prev) => [
       ...prev,
       {
+        id: crypto.randomUUID(),
         event: "agent_thought",
         agent_name: pendingApproval.agent_name,
         timestamp: new Date().toISOString(),
@@ -169,6 +194,7 @@ export function OrchestrationProvider({ children }: { children: ReactNode }) {
     setEvents((prev) => [
       ...prev,
       {
+        id: crypto.randomUUID(),
         event: "agent_thought",
         agent_name: pendingApproval.agent_name,
         timestamp: new Date().toISOString(),
