@@ -10,14 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.agents.superviser import (
-    aggregate_node,
-    analyst_node,
-    executor_node,
-    researcher_node,
-    supervisor_node,
-    writer_node,
-)
+from app.agents.superviser import build_graph
 from app.graph.state import AgentState
 
 app = FastAPI(title="Multi-Agent Orchestration API")
@@ -39,6 +32,7 @@ app.add_middleware(
 TaskStore = Dict[str, Any]
 _tasks: TaskStore = {}
 _tasks_lock = threading.Lock()
+_supervisor_graph = build_graph()
 
 
 class TaskCreate(BaseModel):
@@ -95,13 +89,15 @@ def get_task(task_id: str) -> TaskStore:
 
 
 def append_task_event(task: TaskStore, agent: str, event: str, message: str) -> None:
-    task["event_log"].append(build_event(agent, event, message))
-    task["last_updated"] = now_iso()
+    with _tasks_lock:
+        task["event_log"].append(build_event(agent, event, message))
+        task["last_updated"] = now_iso()
 
 
 def run_task(task_id: str) -> None:
     task = get_task(task_id)
-    task["status"] = "running"
+    with _tasks_lock:
+        task["status"] = "running"
     append_task_event(task, "supervisor", "started", "Starting supervisor routing")
 
     state: AgentState = {
@@ -110,66 +106,39 @@ def run_task(task_id: str) -> None:
         "event_log": [],
     }
 
-    supervisor_output = supervisor_node(state)
-    state.update(supervisor_output)
-
-    task["selected_agent"] = state.get("selected_agent")
-    task["supervisor_reasoning"] = state.get("supervisor_reasoning")
-    append_task_event(
-        task,
-        "supervisor",
-        "routing",
-        f"Selected '{task['selected_agent']}' because: {task['supervisor_reasoning']}",
-    )
-
-    worker_agent = task["selected_agent"]
-    if worker_agent in {
-        "researcher",
-        "executor",
-        "writer",
-        "analyst",
-    }:
-        append_task_event(task, worker_agent, "started", f"Invoking {worker_agent} agent")
-        worker_fn = {
-            "researcher": researcher_node,
-            "executor": executor_node,
-            "writer": writer_node,
-            "analyst": analyst_node,
-        }.get(worker_agent)
-
-        try:
-            worker_output = worker_fn(state)
-            state.update(worker_output)
-            append_task_event(
-                task,
-                worker_agent,
-                "completed",
-                f"{worker_agent.capitalize()} finished with status: {state.get('status', 'completed')}",
-            )
-        except Exception as exc:
-            append_task_event(
-                task,
-                worker_agent,
-                "error",
-                f"{worker_agent.capitalize()} failed: {str(exc)}",
-            )
-            state["status"] = f"{worker_agent} error: {str(exc)}"
-    else:
-        append_task_event(
-            task,
-            "supervisor",
-            "skipped",
-            f"No worker invocation required for selected agent '{worker_agent}'",
+    append_task_event(task, "supervisor", "routing", "Evaluating worker route")
+    try:
+        graph_output = _supervisor_graph.invoke(
+            {"query": task["query"], "messages": task["messages"], "event_log": []}
         )
+        state.update(graph_output)
+        selected_agent = state.get("selected_agent")
+        if selected_agent:
+            with _tasks_lock:
+                task["selected_agent"] = selected_agent
+                task["supervisor_reasoning"] = state.get("supervisor_reasoning")
+            append_task_event(
+                task,
+                "supervisor",
+                "routing",
+                f"Selected '{selected_agent}' because: {state.get('supervisor_reasoning', 'no reason provided')}",
+            )
+            if selected_agent != "end":
+                append_task_event(task, selected_agent, "completed", f"{selected_agent.capitalize()} finished execution")
+        append_task_event(task, "aggregate", "completed", "Aggregation complete")
+    except Exception as exc:
+        with _tasks_lock:
+            task["status"] = "failed"
+            task["finished_at"] = now_iso()
+        append_task_event(task, "supervisor", "error", f"Graph invoke failed: {str(exc)}")
+        return
 
-    append_task_event(task, "aggregate", "started", "Beginning aggregation of worker outputs")
-    aggregation_output = aggregate_node(state)
-    state.update(aggregation_output)
-    task["final_response"] = state.get("final_response")
-    append_task_event(task, "aggregate", "completed", "Aggregation complete")
-    task["state"] = state
-    task["status"] = "completed"
-    task["finished_at"] = now_iso()
+    with _tasks_lock:
+        task["final_response"] = state.get("final_response")
+    with _tasks_lock:
+        task["state"] = state
+        task["status"] = "completed"
+        task["finished_at"] = now_iso()
 
 
 @app.post("/api/task", response_model=TaskStatusResponse)
