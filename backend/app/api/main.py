@@ -135,6 +135,9 @@ def run_task(task_id: str) -> None:
                 {"query": task["query"], "messages": task["messages"], "event_log": []},
             )
             graph_output = future.result(timeout=TASK_TIMEOUT_SECONDS)
+        graph_output = _supervisor_graph.invoke(
+            {"query": task["query"], "messages": task["messages"], "event_log": []}
+        )
         state.update(graph_output)
         selected_agent = state.get("selected_agent")
         if selected_agent:
