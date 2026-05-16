@@ -1,9 +1,9 @@
-import { Activity, Plus, History } from "lucide-react";
-import { useOrchestration } from "@/context/orchestration-context";
-import { AgentAvatar } from "./AgentAvatar";
-import { StatusDot, StatusLabel } from "./StatusDot";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { Activity, Plus, History } from "lucide-react"
+import { useOrchestration } from "@/context/orchestration-context"
+import { AgentAvatar } from "./AgentAvatar"
+import { StatusDot, StatusLabel } from "./StatusDot"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 export function Sidebar() {
   const { sessions, activeSessionId, agents, restart } = useOrchestration();
