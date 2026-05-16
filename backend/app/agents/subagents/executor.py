@@ -9,7 +9,8 @@ from app.graph.state import AgentState
 
 # Get file output tool specifically for executor
 file_tools = get_file_tools()
-output_tool = next(tool for tool in file_tools["output"] if "write_file" in tool.name)
+# FIX: Added None fallback to prevent StopIteration crash if tool is missing
+output_tool = next((tool for tool in file_tools["output"] if "write_file" in tool.name), None)
 
 def retrieve_node(state: AgentState) -> AgentState:
     """Retrieve relevant memories based on the query."""
@@ -54,9 +55,12 @@ def file_management_node(state: AgentState) -> AgentState:
     execution_result = state.get("execution_result", "")
     
     try:
-        # Saving output into a default execution log file
-        output_tool.invoke({"file_path": "executor_output.txt", "text": execution_result})
-        status = "Execution result saved to file."
+        # FIX: Check if the tool exists before invoking
+        if output_tool:
+            output_tool.invoke({"file_path": "executor_output.txt", "text": execution_result})
+            status = "Execution result saved to file."
+        else:
+            status = "File saving skipped: Output tool not found."
     except Exception as e:
         status = f"File saving error: {str(e)}"
         

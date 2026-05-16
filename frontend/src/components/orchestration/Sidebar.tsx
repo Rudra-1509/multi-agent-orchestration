@@ -17,17 +17,28 @@ export function Sidebar() {
           </div>
           <span className="text-sm font-semibold tracking-tight">Orchestra</span>
         </div>
-        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={restart} title="New session">
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-7 w-7"
+          onClick={restart}
+          title="New session"
+        >
           <Plus className="h-4 w-4" />
         </Button>
       </div>
 
       <div className="px-4 pt-4 pb-2">
-        <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Agents</p>
+        <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+          Agents
+        </p>
       </div>
       <div className="flex flex-col gap-1 px-2">
         {agents.map((a) => (
-          <div key={a.name} className="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-accent/40">
+          <div
+            key={a.name}
+            className="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-accent/40"
+          >
             <AgentAvatar name={a.name} size="sm" />
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between">
@@ -45,7 +56,9 @@ export function Sidebar() {
 
       <div className="mt-6 flex items-center gap-2 px-4 pb-2">
         <History className="h-3.5 w-3.5 text-muted-foreground" />
-        <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">History</p>
+        <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+          History
+        </p>
       </div>
       <div className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 pb-4">
         {sessions.map((s) => (
@@ -60,8 +73,14 @@ export function Sidebar() {
               <StatusDot status={s.status === "running" ? "active" : "complete"} />
               <span className="truncate text-sm">{s.title}</span>
             </div>
-            <span className="pl-4 text-[11px] text-muted-foreground">
-              {new Date(s.startedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+            {/* FIX: Added suppressHydrationWarning to prevent SSR mismatch errors */}
+            <span suppressHydrationWarning className="pl-4 text-[11px] text-muted-foreground">
+              {new Date(s.startedAt).toLocaleString(undefined, {
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
             </span>
           </button>
         ))}

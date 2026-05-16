@@ -173,13 +173,13 @@ def aggregate_node(state: AgentState) -> AgentState:
     # Filter out empty outputs
     outputs = {k: v for k, v in outputs.items() if v}
     
-    # Build final response using LLM
+    # FIX: Increased truncation limit to 4000 to preserve agent insights
     aggregation_prompt = f"""Review these worker outputs and create a concise, coherent final response.
     
 Original Request: {state.get('query', '')}
 
 Worker Outputs:
-{chr(10).join([f'- {k}: {str(v)[:200]}...' for k, v in outputs.items()])}
+{chr(10).join([f'- {k}: {str(v)[:4000]}...' for k, v in outputs.items()])}
 
 Create a unified response that:
 1. Directly answers the original request
