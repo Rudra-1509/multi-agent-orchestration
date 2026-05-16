@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime, timedelta
@@ -41,6 +42,7 @@ _tasks_lock = threading.Lock()
 _supervisor_graph = build_graph()
 TASK_TTL_SECONDS = int(os.getenv("TASK_TTL_SECONDS", "3600"))
 TASK_TIMEOUT_SECONDS = int(os.getenv("TASK_TIMEOUT_SECONDS", "120"))
+_cleanup_thread_started = False
 
 
 class TaskCreate(BaseModel):
@@ -112,6 +114,31 @@ def cleanup_expired_tasks() -> None:
         ]
         for task_id in expired:
             _tasks.pop(task_id, None)
+
+
+def _cleanup_loop() -> None:
+    while True:
+        try:
+            cleanup_expired_tasks()
+        except Exception:
+            # Keep cleanup loop resilient; task expiration is best-effort housekeeping.
+            pass
+        time.sleep(60)
+
+
+def validate_required_env() -> None:
+    if not (os.getenv("GROQ_API_TOKEN") or os.getenv("GROQ_API_KEY")):
+        raise RuntimeError("Missing required environment variable: GROQ_API_TOKEN (or GROQ_API_KEY)")
+
+
+@app.on_event("startup")
+def startup_tasks() -> None:
+    global _cleanup_thread_started
+    validate_required_env()
+    if not _cleanup_thread_started:
+        cleanup_thread = threading.Thread(target=_cleanup_loop, daemon=True)
+        cleanup_thread.start()
+        _cleanup_thread_started = True
 
 
 def run_task(task_id: str) -> None:
