@@ -1,7 +1,8 @@
+import json
 import os
 from typing import Literal
 from langgraph.graph import StateGraph, START, END
-from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
+from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
@@ -11,14 +12,19 @@ from app.agents.subagents.executor import build_graph as build_executor
 from app.agents.subagents.writer import build_graph as build_writer
 from app.agents.subagents.analyst import build_graph as build_analyst
 
-# Initialize LLM
 from langchain_groq import ChatGroq
-import os
 
 load_dotenv()
-groq_token=os.getenv("GROQ_API_TOKEN")
 
-llm=ChatGroq(model="llama-3.1-8b-instant",api_key=groq_token)
+
+def get_llm() -> ChatGroq:
+    """Lazily initialize Groq client so imports/tests work without env at import time."""
+    groq_token = os.getenv("GROQ_API_TOKEN") or os.getenv("GROQ_API_KEY")
+    if not groq_token:
+        raise RuntimeError(
+            "Missing Groq API key. Set GROQ_API_TOKEN (or GROQ_API_KEY) in your environment."
+        )
+    return ChatGroq(model="llama-3.1-8b-instant", api_key=groq_token)
 
 # Build worker graphs
 researcher_graph = build_researcher()
@@ -74,21 +80,12 @@ Consider:
 Respond with a JSON object: {{"agent": "...", "reasoning": "..."}}"""
 
     try:
-        response = llm.invoke([HumanMessage(content=routing_prompt)])
+        response = get_llm().invoke([HumanMessage(content=routing_prompt)])
         
-        # Parse LLM response
-        import json
         response_text = response.content.strip()
-        
-        # Try to extract JSON from response
-        if "{" in response_text and "}" in response_text:
-            json_str = response_text[response_text.find("{"):response_text.rfind("}")+1]
-            decision = json.loads(json_str)
-            selected_agent = decision.get("agent", "end")
-            reasoning = decision.get("reasoning", "Task routing decision made")
-        else:
-            selected_agent = "end"
-            reasoning = "Unable to parse routing decision"
+        decision = RouteDecision.model_validate_json(response_text)
+        selected_agent = decision.agent
+        reasoning = decision.reasoning
             
     except Exception as e:
         selected_agent = "end"
@@ -188,7 +185,7 @@ Create a unified response that:
 4. Mentions which agents contributed"""
 
     try:
-        response = llm.invoke([HumanMessage(content=aggregation_prompt)])
+        response = get_llm().invoke([HumanMessage(content=aggregation_prompt)])
         final_response = response.content
     except Exception as e:
         final_response = f"Aggregation error: {str(e)}"
