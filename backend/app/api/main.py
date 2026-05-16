@@ -1,8 +1,10 @@
 import asyncio
 import json
+import os
 import threading
 import uuid
-from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
@@ -10,27 +12,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.agents.superviser import (
-    aggregate_node,
-    analyst_node,
-    executor_node,
-    researcher_node,
-    supervisor_node,
-    writer_node,
-)
+from app.agents.superviser import build_graph
 from app.graph.state import AgentState
 
 app = FastAPI(title="Multi-Agent Orchestration API")
 
+DEFAULT_CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:5173",
+]
+cors_origins_env = os.getenv("CORS_ALLOW_ORIGINS", "")
+ALLOW_ORIGINS = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()] or DEFAULT_CORS_ORIGINS
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000", 
-        "http://127.0.0.1:3000",
-        "http://localhost:8080",   
-        "http://127.0.0.1:8080",   
-        "http://localhost:5173"    
-                   ],
+    allow_origins=ALLOW_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
@@ -39,6 +38,9 @@ app.add_middleware(
 TaskStore = Dict[str, Any]
 _tasks: TaskStore = {}
 _tasks_lock = threading.Lock()
+_supervisor_graph = build_graph()
+TASK_TTL_SECONDS = int(os.getenv("TASK_TTL_SECONDS", "3600"))
+TASK_TIMEOUT_SECONDS = int(os.getenv("TASK_TIMEOUT_SECONDS", "120"))
 
 
 class TaskCreate(BaseModel):
@@ -95,13 +97,28 @@ def get_task(task_id: str) -> TaskStore:
 
 
 def append_task_event(task: TaskStore, agent: str, event: str, message: str) -> None:
-    task["event_log"].append(build_event(agent, event, message))
-    task["last_updated"] = now_iso()
+    with _tasks_lock:
+        task["event_log"].append(build_event(agent, event, message))
+        task["last_updated"] = now_iso()
+
+
+def cleanup_expired_tasks() -> None:
+    cutoff = datetime.utcnow() - timedelta(seconds=TASK_TTL_SECONDS)
+    with _tasks_lock:
+        expired = [
+            task_id
+            for task_id, task in _tasks.items()
+            if datetime.fromisoformat(task.get("last_updated", task["created_at"]).replace("Z", "")) < cutoff
+        ]
+        for task_id in expired:
+            _tasks.pop(task_id, None)
 
 
 def run_task(task_id: str) -> None:
+    cleanup_expired_tasks()
     task = get_task(task_id)
-    task["status"] = "running"
+    with _tasks_lock:
+        task["status"] = "running"
     append_task_event(task, "supervisor", "started", "Starting supervisor routing")
 
     state: AgentState = {
@@ -110,66 +127,48 @@ def run_task(task_id: str) -> None:
         "event_log": [],
     }
 
-    supervisor_output = supervisor_node(state)
-    state.update(supervisor_output)
-
-    task["selected_agent"] = state.get("selected_agent")
-    task["supervisor_reasoning"] = state.get("supervisor_reasoning")
-    append_task_event(
-        task,
-        "supervisor",
-        "routing",
-        f"Selected '{task['selected_agent']}' because: {task['supervisor_reasoning']}",
-    )
-
-    worker_agent = task["selected_agent"]
-    if worker_agent in {
-        "researcher",
-        "executor",
-        "writer",
-        "analyst",
-    }:
-        append_task_event(task, worker_agent, "started", f"Invoking {worker_agent} agent")
-        worker_fn = {
-            "researcher": researcher_node,
-            "executor": executor_node,
-            "writer": writer_node,
-            "analyst": analyst_node,
-        }.get(worker_agent)
-
-        try:
-            worker_output = worker_fn(state)
-            state.update(worker_output)
+    append_task_event(task, "supervisor", "routing", "Evaluating worker route")
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                _supervisor_graph.invoke,
+                {"query": task["query"], "messages": task["messages"], "event_log": []},
+            )
+            graph_output = future.result(timeout=TASK_TIMEOUT_SECONDS)
+        state.update(graph_output)
+        selected_agent = state.get("selected_agent")
+        if selected_agent:
+            with _tasks_lock:
+                task["selected_agent"] = selected_agent
+                task["supervisor_reasoning"] = state.get("supervisor_reasoning")
             append_task_event(
                 task,
-                worker_agent,
-                "completed",
-                f"{worker_agent.capitalize()} finished with status: {state.get('status', 'completed')}",
+                "supervisor",
+                "routing",
+                f"Selected '{selected_agent}' because: {state.get('supervisor_reasoning', 'no reason provided')}",
             )
-        except Exception as exc:
-            append_task_event(
-                task,
-                worker_agent,
-                "error",
-                f"{worker_agent.capitalize()} failed: {str(exc)}",
-            )
-            state["status"] = f"{worker_agent} error: {str(exc)}"
-    else:
-        append_task_event(
-            task,
-            "supervisor",
-            "skipped",
-            f"No worker invocation required for selected agent '{worker_agent}'",
-        )
+            if selected_agent != "end":
+                append_task_event(task, selected_agent, "completed", f"{selected_agent.capitalize()} finished execution")
+        append_task_event(task, "aggregate", "completed", "Aggregation complete")
+    except FuturesTimeoutError:
+        with _tasks_lock:
+            task["status"] = "failed"
+            task["finished_at"] = now_iso()
+        append_task_event(task, "supervisor", "error", f"Task timed out after {TASK_TIMEOUT_SECONDS} seconds")
+        return
+    except Exception as exc:
+        with _tasks_lock:
+            task["status"] = "failed"
+            task["finished_at"] = now_iso()
+        append_task_event(task, "supervisor", "error", f"Graph invoke failed: {str(exc)}")
+        return
 
-    append_task_event(task, "aggregate", "started", "Beginning aggregation of worker outputs")
-    aggregation_output = aggregate_node(state)
-    state.update(aggregation_output)
-    task["final_response"] = state.get("final_response")
-    append_task_event(task, "aggregate", "completed", "Aggregation complete")
-    task["state"] = state
-    task["status"] = "completed"
-    task["finished_at"] = now_iso()
+    with _tasks_lock:
+        task["final_response"] = state.get("final_response")
+    with _tasks_lock:
+        task["state"] = state
+        task["status"] = "completed"
+        task["finished_at"] = now_iso()
 
 
 @app.post("/api/task", response_model=TaskStatusResponse)
@@ -192,6 +191,7 @@ def create_task(
 
     with _tasks_lock:
         _tasks[task_id] = task
+    cleanup_expired_tasks()
 
     background_tasks.add_task(run_task, task_id)
     append_task_event(task, "system", "queued", "Task created and queued for execution")
