@@ -39,6 +39,28 @@ class RouteDecision(BaseModel):
     reasoning: str = Field(description="Why this agent was chosen")
 
 
+def _parse_route_decision(response_text: str) -> RouteDecision:
+    """Parse supervisor JSON robustly, including fenced JSON responses."""
+    normalized = response_text.strip()
+
+    # Handle markdown code fences such as ```json ... ```
+    if normalized.startswith("```"):
+        lines = normalized.splitlines()
+        if len(lines) >= 3:
+            normalized = "\n".join(lines[1:-1]).strip()
+
+    try:
+        return RouteDecision.model_validate_json(normalized)
+    except Exception:
+        # Fallback: extract first JSON object from mixed text output.
+        start = normalized.find("{")
+        end = normalized.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            candidate = normalized[start : end + 1]
+            return RouteDecision.model_validate_json(candidate)
+        raise
+
+
 def supervisor_node(state: AgentState) -> AgentState:
     """
     Main supervisor node that analyzes the task and decides routing.
@@ -83,7 +105,7 @@ Respond with a JSON object: {{"agent": "...", "reasoning": "..."}}"""
         response = get_llm().invoke([HumanMessage(content=routing_prompt)])
         
         response_text = response.content.strip()
-        decision = RouteDecision.model_validate_json(response_text)
+        decision = _parse_route_decision(response_text)
         selected_agent = decision.agent
         reasoning = decision.reasoning
             
