@@ -6,6 +6,7 @@ import { ArtifactsPanel } from "@/components/orchestration/ArtifactsPanel";
 
 export const Route = createFileRoute("/")({
   component: Index,
+  errorComponent: IndexError,
   head: () => ({
     meta: [
       { title: "Orchestra — Multi-Agent Control Room" },
@@ -13,6 +14,17 @@ export const Route = createFileRoute("/")({
     ],
   }),
 });
+
+function IndexError() {
+  return (
+    <div className="flex h-screen items-center justify-center bg-background text-foreground">
+      <div className="rounded border p-6 text-center">
+        <h1 className="text-lg font-semibold">Something went wrong</h1>
+        <p className="text-sm text-muted-foreground">Please refresh the page and try again.</p>
+      </div>
+    </div>
+  );
+}
 
 function Index() {
   return (
