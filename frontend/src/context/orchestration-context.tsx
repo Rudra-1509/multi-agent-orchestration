@@ -35,7 +35,7 @@ const INITIAL_AGENTS: AgentInfo[] = [
 ];
 
 const INITIAL_SESSIONS: Session[] = [
-  { id: "s_now", title: "Live Agent Session", startedAt: new Date().toISOString(), status: "idle" },
+  { id: "s_now", title: "Live Agent Session", startedAt: "1970-01-01T00:00:00.000Z", status: "idle" },
 ];
 
 export function OrchestrationProvider({ children }: { children: ReactNode }) {
