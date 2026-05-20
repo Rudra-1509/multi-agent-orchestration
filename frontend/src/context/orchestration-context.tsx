@@ -3,6 +3,32 @@ import type { AgentInfo, AgentStatus, Artifact, EventType, Session, StreamEvent 
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const EVENT_TYPES: EventType[] = ["agent_start", "agent_thought", "tool_start", "tool_end", "agent_output", "require_approval", "artifact", "agent_complete"];
+const BACKEND_EVENT_MAP: Record<string, EventType> = {
+  queued: "agent_thought",
+  started: "agent_start",
+  routing: "agent_thought",
+  completed: "agent_complete",
+  error: "agent_output",
+};
+
+interface IncomingEvent {
+  event?: unknown;
+  agent?: unknown;
+  agent_name?: unknown;
+  timestamp?: unknown;
+  message?: unknown;
+  data?: unknown;
+  tool?: unknown;
+  tool_status?: unknown;
+  approval?: unknown;
+  artifact?: unknown;
+}
+
+function toEventType(value: unknown): EventType {
+  if (typeof value === "string" && EVENT_TYPES.includes(value as EventType)) return value as EventType;
+  if (typeof value === "string" && BACKEND_EVENT_MAP[value]) return BACKEND_EVENT_MAP[value];
+  return "agent_thought";
+}
 
 interface OrchestrationState {
   events: StreamEvent[];
@@ -73,22 +99,35 @@ export function OrchestrationProvider({ children }: { children: ReactNode }) {
 
     source.onmessage = (ev) => {
       try {
-        const data = JSON.parse(ev.data) as Record<string, unknown>;
-        const eventType: EventType = EVENT_TYPES.includes(data.event as EventType) ? (data.event as EventType) : "agent_thought";
+        const data = JSON.parse(ev.data) as IncomingEvent;
         const event: StreamEvent = {
           id: crypto.randomUUID(),
-          event: eventType,
-          agent_name: typeof data.agent === "string" ? data.agent : "System",
+          event: toEventType(data.event),
+          agent_name:
+            typeof data.agent_name === "string"
+              ? data.agent_name
+              : typeof data.agent === "string"
+                ? data.agent
+                : "System",
           timestamp: typeof data.timestamp === "string" ? data.timestamp : new Date().toISOString(),
-          data: typeof data.message === "string" ? data.message : "",
+          data:
+            typeof data.data === "string"
+              ? data.data
+              : typeof data.message === "string"
+                ? data.message
+                : "",
+          tool: typeof data.tool === "string" ? data.tool : undefined,
+          tool_status: data.tool_status === "running" || data.tool_status === "success" || data.tool_status === "error" ? data.tool_status : undefined,
+          approval: typeof data.approval === "object" && data.approval !== null ? (data.approval as StreamEvent["approval"]) : undefined,
+          artifact: typeof data.artifact === "object" && data.artifact !== null ? (data.artifact as StreamEvent["artifact"]) : undefined,
         };
 
         setEvents((prev) => [...prev, event]);
 
-        // Update agent status based on event type
-        if (data.event === "started") setAgentStatus(typeof data.agent === "string" ? data.agent : "Supervisor", "active");
-        if (data.event === "completed") setAgentStatus(typeof data.agent === "string" ? data.agent : "Supervisor", "complete");
-        if (data.event === "error") setAgentStatus(typeof data.agent === "string" ? data.agent : "Supervisor", "error");
+        // Update agent status based on normalized event type
+        if (event.event === "agent_start") setAgentStatus(event.agent_name, "active");
+        if (event.event === "agent_complete") setAgentStatus(event.agent_name, "complete");
+        if (typeof data.event === "string" && data.event === "error") setAgentStatus(event.agent_name, "error");
       } catch (parseError) {
         console.error("Failed to parse SSE event", parseError);
       }
