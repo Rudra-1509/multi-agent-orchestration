@@ -1,13 +1,17 @@
 from langchain_community.agent_toolkits import FileManagementToolkit
 import os
 
-BASE_DIR = os.path.abspath("workspace")
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.join(ROOT_DIR, os.pardir, os.pardir, os.pardir, "workspace")
+BASE_DIR = os.path.abspath(BASE_DIR)
 
 INPUT_DIR = os.path.join(BASE_DIR, "inputs")
 OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 TEMP_DIR = os.path.join(BASE_DIR, "temp")
+
 def get_file_tools():
+    os.makedirs(BASE_DIR, exist_ok=True)
 
     for d in [INPUT_DIR, OUTPUT_DIR, LOG_DIR, TEMP_DIR]:
         os.makedirs(d, exist_ok=True)

@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from app.agents.superviser import build_graph
 from app.graph.state import AgentState
+from app.tools.file.file_manager_tool import OUTPUT_DIR
 
 app = FastAPI(title="Multi-Agent Orchestration API")
 
@@ -200,6 +201,13 @@ def run_task(task_id: str) -> None:
         task["final_response"] = state.get("final_response")
     final_response = state.get("final_response")
     if isinstance(final_response, str) and final_response:
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        final_response_file = os.path.join(OUTPUT_DIR, f"final_response_{task_id}.md")
+        try:
+            with open(final_response_file, "w", encoding="utf-8") as f:
+                f.write(final_response)
+        except Exception:
+            pass
         append_task_event(
             task,
             "aggregate",
@@ -207,7 +215,7 @@ def run_task(task_id: str) -> None:
             "Final response artifact generated.",
             {
                 "id": uuid.uuid4().hex,
-                "title": "final_response.md",
+                "title": os.path.basename(final_response_file),
                 "kind": "markdown",
                 "language": "markdown",
                 "content": final_response,
