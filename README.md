@@ -364,7 +364,6 @@ This project is part of an AI/ML learning initiative.
 | Frontend | http://localhost:8080 |
 | Backend | http://localhost:8000 |
 | API Docs | http://localhost:8000/docs |
-| Integration Guide | [INTEGRATION_GUIDE.md](./INTEGRATION_GUIDE.md) |
 
 ---
 
