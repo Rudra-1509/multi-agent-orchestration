@@ -75,11 +75,13 @@ export function Sidebar() {
             </div>
             {/* FIX: Added suppressHydrationWarning to prevent SSR mismatch errors */}
             <span suppressHydrationWarning className="pl-4 text-[11px] text-muted-foreground">
-              {new Date(s.startedAt).toLocaleString(undefined, {
+              {new Date(s.startedAt).toLocaleString("en-US", {
                 month: "short",
                 day: "numeric",
                 hour: "2-digit",
                 minute: "2-digit",
+                hour12: false,
+                timeZone: "UTC",
               })}
             </span>
           </button>

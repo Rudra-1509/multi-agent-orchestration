@@ -25,7 +25,13 @@ function groupEvents(events: StreamEvent[]): Group[] {
 }
 
 function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return new Date(iso).toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+  });
 }
 
 function StepCard({ group, index }: { group: Group; index: number }) {

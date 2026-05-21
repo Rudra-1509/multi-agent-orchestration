@@ -29,10 +29,10 @@ A complete **live multi-agent system** with real-time visualization. Watch super
        │ HTTP/REST
        ▼
 ┌─────────────┐         ┌──────────────┐
-│  FastAPI    │ ────► │  LangGraph   │
-│  Backend    │         │  Orchestr.  │
-└─────────────┘         │  Engine     │
-       │                 └──────────────┘
+│  FastAPI    │ ────►   │  LangGraph   │
+│  Backend    │         │  Orchestr.   │
+└─────────────┘         │  Engine      │
+       │                └──────────────┘
        │
        ├─► Researcher Agent  (Search + Scrape)
        ├─► Executor Agent    (Python REPL)
@@ -83,15 +83,35 @@ npm run dev      # or `bun run dev`
 
 ### 4️⃣ Access the Application
 
-- **Frontend**: http://localhost:5173
+- **Frontend**: http://localhost:8080
 - **Backend API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
+
+Note: the frontend dev server normally uses port **8080**, but some dev environments or proxies may expose it on **8080**. If you see the UI at http://localhost:8080, that's expected in those setups.
+
+To explicitly force the frontend dev port, set `PORT` or pass `--port` to Vite. Examples (Windows PowerShell / cmd):
+
+```powershell
+# PowerShell
+$env:PORT=8080; npm run dev
+```
+
+```cmd
+:: cmd.exe
+set PORT=8080&& npm run dev
+```
+
+Or run directly with Vite flags:
+
+```bash
+npm run dev -- --port 8080
+```
 
 ---
 
 ## 📋 How to Use
 
-1. **Open** the frontend at http://localhost:5173
+1. **Open** the frontend at http://localhost:8080
 2. **Enter** a task prompt (e.g., "Research quantum computing trends")
 3. **Click** "Launch Task" / "Start"
 4. **Watch** the live agent timeline as:
@@ -140,11 +160,27 @@ multi-agent-orchestration/
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── routes/                 # TanStack Router
-│   │   ├── context/                # Orchestration context (API-connected)
-│   │   ├── components/             # UI components
-│   │   └── types/                  # TypeScript definitions
-│   └── package.json
+│   │   ├── components/
+│   │   │   ├── orchestration/
+│   │   │   └── ui/
+│   │   ├── context/
+│   │   ├── hooks/
+│   │   ├── lib/
+│   │   ├── routes/                 # TanStack Router routes
+│   │   ├── types/                  # TypeScript definitions
+│   │   ├── router.tsx              # Router configuration
+│   │   ├── routeTree.gen.ts        # Generated TanStack route tree
+│   │   ├── server.ts
+│   │   ├── start.ts
+│   │   └── styles.css
+│   │
+│   ├── .gitignore
+│   ├── .prettierignore
+│   ├── .prettierrc
+│   ├── bun.lock                    # Bun lockfile
+│   ├── package.json
+│   └── vite.config.ts
+```
 │
 ├── INTEGRATION_GUIDE.md             # Detailed integration docs
 ├── startup.ps1                      # PowerShell startup script
@@ -325,7 +361,7 @@ This project is part of an AI/ML learning initiative.
 
 | Resource | URL |
 |----------|-----|
-| Frontend | http://localhost:5173 |
+| Frontend | http://localhost:8080 |
 | Backend | http://localhost:8000 |
 | API Docs | http://localhost:8000/docs |
 | Integration Guide | [INTEGRATION_GUIDE.md](./INTEGRATION_GUIDE.md) |

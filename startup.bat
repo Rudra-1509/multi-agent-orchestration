@@ -21,9 +21,9 @@ start "Backend API" cmd /k "cd backend && venv\Scripts\activate && python -m fas
 REM Wait a moment for backend to start
 timeout /t 3 /nobreak
 
-REM Start Frontend in a new window
-echo [2/2] Starting Frontend (Vite on port 5173)...
-start "Frontend UI" cmd /k "cd frontend && npm run dev"
+REM Start Frontend in a new window (force PORT=8080)
+echo [2/2] Starting Frontend (Vite on port 8080)...
+start "Frontend UI" cmd /k "cd frontend && set PORT=8080&& npm run dev"
 
 echo.
 echo =====================================
@@ -31,7 +31,7 @@ echo Services Starting...
 echo =====================================
 echo.
 echo Backend API:  http://localhost:8000
-echo Frontend UI:  http://localhost:5173
+echo Frontend UI:  http://localhost:8080
 echo API Docs:     http://localhost:8000/docs
 echo.
 echo Both windows will open. Close either window to stop that service.

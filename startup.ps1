@@ -17,10 +17,12 @@ Start-Process PowerShell -ArgumentList {
 
 Start-Sleep -Seconds 3
 
-Write-Host "[2/2] Starting Frontend (Vite on port 5173)..." -ForegroundColor Green
+Write-Host "[2/2] Starting Frontend (Vite on port 8080)..." -ForegroundColor Green
 Start-Process PowerShell -ArgumentList {
     Set-Location $PSScriptRoot
     cd frontend
+    # Ensure Vite uses port 8080 for local dev
+    $env:PORT = "8080"
     npm run dev
 } -WindowStyle Normal
 
@@ -30,7 +32,7 @@ Write-Host "Services Starting..." -ForegroundColor Cyan
 Write-Host "=====================================" -ForegroundColor Cyan
 Write-Host "`n"
 Write-Host "Backend API:  http://localhost:8000" -ForegroundColor Yellow
-Write-Host "Frontend UI:  http://localhost:5173" -ForegroundColor Yellow
+Write-Host "Frontend UI:  http://localhost:8080" -ForegroundColor Yellow
 Write-Host "API Docs:     http://localhost:8000/docs" -ForegroundColor Yellow
 Write-Host "`n"
 Write-Host "Both windows will open in new terminals." -ForegroundColor Cyan

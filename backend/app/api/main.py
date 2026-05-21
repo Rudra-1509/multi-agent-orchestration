@@ -21,9 +21,11 @@ app = FastAPI(title="Multi-Agent Orchestration API")
 DEFAULT_CORS_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
     "http://localhost:8080",
     "http://127.0.0.1:8080",
-    "http://localhost:5173",
+    "http://localhost:8080",
 ]
 cors_origins_env = os.getenv("CORS_ALLOW_ORIGINS", "")
 ALLOW_ORIGINS = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()] or DEFAULT_CORS_ORIGINS
@@ -58,6 +60,7 @@ class Event(BaseModel):
     event: str
     message: str
     timestamp: str
+    artifact: Optional[Dict[str, Any]] = None
 
 
 class TaskStatusResponse(BaseModel):
@@ -81,13 +84,16 @@ def now_iso() -> str:
     return datetime.utcnow().isoformat() + "Z"
 
 
-def build_event(agent: str, event: str, message: str) -> Dict[str, str]:
-    return {
+def build_event(agent: str, event: str, message: str, artifact: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
         "agent": agent,
         "event": event,
         "message": message,
         "timestamp": now_iso(),
     }
+    if artifact is not None:
+        payload["artifact"] = artifact
+    return payload
 
 
 def get_task(task_id: str) -> TaskStore:
@@ -98,9 +104,9 @@ def get_task(task_id: str) -> TaskStore:
     return task
 
 
-def append_task_event(task: TaskStore, agent: str, event: str, message: str) -> None:
+def append_task_event(task: TaskStore, agent: str, event: str, message: str, artifact: Optional[Dict[str, Any]] = None) -> None:
     with _tasks_lock:
-        task["event_log"].append(build_event(agent, event, message))
+        task["event_log"].append(build_event(agent, event, message, artifact))
         task["last_updated"] = now_iso()
 
 
@@ -192,6 +198,24 @@ def run_task(task_id: str) -> None:
 
     with _tasks_lock:
         task["final_response"] = state.get("final_response")
+    final_response = state.get("final_response")
+    if isinstance(final_response, str) and final_response:
+        append_task_event(
+            task,
+            "aggregate",
+            "artifact",
+            "Final response artifact generated.",
+            {
+                "id": uuid.uuid4().hex,
+                "title": "final_response.md",
+                "kind": "markdown",
+                "language": "markdown",
+                "content": final_response,
+                "agent": "aggregate",
+                "createdAt": now_iso(),
+            },
+        )
+    append_task_event(task, "supervisor", "completed", "Supervisor finished orchestration")
     with _tasks_lock:
         task["state"] = state
         task["status"] = "completed"

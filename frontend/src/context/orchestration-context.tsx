@@ -35,7 +35,7 @@ interface OrchestrationState {
   agents: AgentInfo[];
   artifacts: Artifact[];
   sessions: Session[];
-  activeSessionId: string;
+  activeSessionId: string | null;
   pendingApproval: StreamEvent | null;
   isStreaming: boolean;
   hasStarted: boolean;
@@ -60,14 +60,14 @@ const INITIAL_AGENTS: AgentInfo[] = [
   { name: "Writer", role: "Document Generation", status: "idle" },
 ];
 
-const INITIAL_SESSIONS: Session[] = [
-  { id: "s_now", title: "Live Agent Session", startedAt: "1970-01-01T00:00:00.000Z", status: "idle" },
-];
+const INITIAL_SESSIONS: Session[] = [];
 
 export function OrchestrationProvider({ children }: { children: ReactNode }) {
   const [events, setEvents] = useState<StreamEvent[]>([]);
   const [agents, setAgents] = useState<AgentInfo[]>(INITIAL_AGENTS);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const [sessions, setSessions] = useState<Session[]>(INITIAL_SESSIONS);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [pendingApproval, setPendingApproval] = useState<StreamEvent | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
@@ -124,6 +124,11 @@ export function OrchestrationProvider({ children }: { children: ReactNode }) {
 
         setEvents((prev) => [...prev, event]);
 
+        if (event.event === "artifact" && event.artifact) {
+          setArtifacts((prev) => [...prev, event.artifact!]);
+          setSelectedArtifactId((current) => current ?? event.artifact!.id);
+        }
+
         // Update agent status based on normalized event type
         if (event.event === "agent_start") setAgentStatus(event.agent_name, "active");
         if (event.event === "agent_complete") setAgentStatus(event.agent_name, "complete");
@@ -133,8 +138,19 @@ export function OrchestrationProvider({ children }: { children: ReactNode }) {
       }
     };
 
+    const completeSession = () => {
+      setSessions((prev) =>
+        prev.map((session) =>
+          session.id === activeSessionId ? { ...session, status: "complete" } : session,
+        ),
+      );
+    };
+
     source.addEventListener("done", () => {
+      setAgentStatus("Supervisor", "complete");
       setIsStreaming(false);
+      setHasStarted(false);
+      completeSession();
       source.close();
       if (eventSourceRef.current === source) {
         eventSourceRef.current = null;
@@ -144,6 +160,8 @@ export function OrchestrationProvider({ children }: { children: ReactNode }) {
     source.onerror = () => {
       setError("Connection lost while streaming task events.");
       setIsStreaming(false);
+      setHasStarted(false);
+      completeSession();
       source.close();
       if (eventSourceRef.current === source) {
         eventSourceRef.current = null;
@@ -182,6 +200,20 @@ export function OrchestrationProvider({ children }: { children: ReactNode }) {
   const start = async (prompt: string) => {
     if (hasStarted) return;
 
+    const sessionId = crypto.randomUUID();
+    const title = prompt.length > 40 ? `${prompt.slice(0, 37)}...` : prompt || "New session";
+
+    setSessions((prev) => [
+      ...prev,
+      {
+        id: sessionId,
+        title,
+        startedAt: new Date().toISOString(),
+        status: "running",
+      },
+    ]);
+    setActiveSessionId(sessionId);
+
     try {
       setError(null);
       setHasStarted(true);
@@ -204,6 +236,8 @@ export function OrchestrationProvider({ children }: { children: ReactNode }) {
       // Subscribe to live events
       subscribeToEvents(payload.task_id);
     } catch (err) {
+      setSessions((prev) => prev.filter((session) => session.id !== sessionId));
+      setActiveSessionId(null);
       setError(`Task creation failed: ${err}`);
       setIsStreaming(false);
       setHasStarted(false);
@@ -245,6 +279,15 @@ export function OrchestrationProvider({ children }: { children: ReactNode }) {
 
   const restart = () => {
     stop();
+    if (activeSessionId) {
+      setSessions((prev) =>
+        prev.map((session) =>
+          session.id === activeSessionId ? { ...session, status: "complete" } : session,
+        ),
+      );
+      setActiveSessionId(null);
+    }
+
     setEvents([]);
     setArtifacts([]);
     setAgents(INITIAL_AGENTS);
@@ -262,8 +305,8 @@ export function OrchestrationProvider({ children }: { children: ReactNode }) {
       events,
       agents,
       artifacts,
-      sessions: INITIAL_SESSIONS,
-      activeSessionId: "s_now",
+      sessions,
+      activeSessionId,
       pendingApproval,
       isStreaming,
       hasStarted,
@@ -277,7 +320,7 @@ export function OrchestrationProvider({ children }: { children: ReactNode }) {
       taskId,
       error,
     }),
-    [events, agents, artifacts, pendingApproval, isStreaming, selectedArtifactId, hasStarted, userPrompt, taskId, error],
+    [events, agents, artifacts, sessions, activeSessionId, pendingApproval, isStreaming, selectedArtifactId, hasStarted, userPrompt, taskId, error],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
