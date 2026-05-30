@@ -19,25 +19,25 @@ A complete **live multi-agent system** with real-time visualization. Watch super
 
 ## 🏗️ Architecture
 
-```
-┌─────────────┐
-│   Frontend  │ ◄─ SSE Streaming
-│  TanStack   │
-│  Start UI   │
-└─────────────┘
-       ▲
-       │ HTTP/REST
-       ▼
-┌─────────────┐         ┌──────────────┐
-│  FastAPI    │ ────►   │  LangGraph   │
-│  Backend    │         │  Orchestr.   │
-└─────────────┘         │  Engine      │
-       │                └──────────────┘
-       │
-       ├─► Researcher Agent  (Search + Scrape)
-       ├─► Executor Agent    (Python REPL)
-       ├─► Writer Agent      (Document Gen)
-       └─► Analyst Agent     (Analysis)
+For the full project diagram, runtime sequence, and component map, see [docs/architecture.md](./docs/architecture.md).
+
+```mermaid
+flowchart LR
+  user([User]) --> ui[Frontend: TanStack Start UI]
+  ui -->|POST /api/task| api[FastAPI Backend]
+  ui <-->|SSE /api/stream/{task_id}| api
+  api --> runner[Background Task Runner]
+  runner --> graph[LangGraph Supervisor]
+  graph --> researcher[Researcher]
+  graph --> executor[Executor]
+  graph --> writer[Writer]
+  graph --> analyst[Analyst]
+  researcher --> aggregate[Aggregate Response]
+  executor --> aggregate
+  writer --> aggregate
+  analyst --> aggregate
+  aggregate --> artifacts[(Markdown Artifacts)]
+  api --> events[(Task Event Log)]
 ```
 
 ---
@@ -58,6 +58,7 @@ A complete **live multi-agent system** with real-time visualization. Watch super
 ```
 
 Or with batch file:
+
 ```cmd
 startup.bat
 ```
@@ -67,6 +68,7 @@ This launches both services in separate windows.
 ### 3️⃣ Manual Startup
 
 **Terminal 1 - Backend:**
+
 ```bash
 cd backend
 ./venv/Scripts/Activate.ps1  # Windows
@@ -76,6 +78,7 @@ python -m fastapi dev app/api/main.py
 ```
 
 **Terminal 2 - Frontend:**
+
 ```bash
 cd frontend
 npm run dev      # or `bun run dev`
@@ -127,6 +130,7 @@ npm run dev -- --port 8080
 ### Backend Environment (`.env`)
 
 Create `backend/.env`:
+
 ```
 GROQ_API_TOKEN=your_groq_api_key
 TAVILY_API_KEY=your_tavily_api_key
@@ -135,6 +139,7 @@ TAVILY_API_KEY=your_tavily_api_key
 ### Frontend API URL
 
 Edit `frontend/src/context/orchestration-context.tsx`:
+
 ```typescript
 const API_BASE = "http://localhost:8000";
 ```
@@ -180,8 +185,9 @@ multi-agent-orchestration/
 │   ├── bun.lock                    # Bun lockfile
 │   ├── package.json
 │   └── vite.config.ts
-```
 │
+├── docs/
+│   └── architecture.md              # Detailed architecture diagrams
 ├── INTEGRATION_GUIDE.md             # Detailed integration docs
 ├── startup.ps1                      # PowerShell startup script
 └── startup.bat                      # Batch startup script
@@ -192,7 +198,9 @@ multi-agent-orchestration/
 ## 🔌 API Endpoints
 
 ### Create Task
+
 **POST** `/api/task`
+
 ```json
 {
   "query": "Find the latest AI trends",
@@ -201,12 +209,15 @@ multi-agent-orchestration/
 ```
 
 ### Poll Status
+
 **GET** `/api/status/{task_id}`
 
 ### Get Results
+
 **GET** `/api/results/{task_id}`
 
 ### Stream Events (SSE)
+
 **GET** `/api/stream/{task_id}`
 
 See [INTEGRATION_GUIDE.md](./INTEGRATION_GUIDE.md) for full details.
@@ -220,7 +231,7 @@ User: "Research quantum computing"
     ↓
 Supervisor: "Routing to Researcher agent"
     ↓
-Researcher: 
+Researcher:
   - "Searching for 'quantum computing trends'"
   - "Scraping top 3 results"
   - "Storing knowledge in Chroma DB"
@@ -281,6 +292,7 @@ npm run lint
 ## 📚 Key Technologies
 
 ### Backend
+
 - **FastAPI**: Modern Python web framework
 - **LangGraph**: Agent orchestration and state management
 - **LangChain**: LLM integrations and tools
@@ -289,6 +301,7 @@ npm run lint
 - **Chroma**: Vector database for knowledge storage
 
 ### Frontend
+
 - **TanStack Start**: Full-stack React framework
 - **React 19**: Latest React features
 - **Vite**: Lightning-fast build tool
@@ -314,17 +327,18 @@ See [INTEGRATION_GUIDE.md](./INTEGRATION_GUIDE.md#-deployment) for cloud options
 
 ## 🐛 Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| Backend won't start | Check Python 3.11+, activate venv, install FastAPI |
-| Frontend can't connect | Ensure backend runs on port 8000, check CORS |
-| Events not streaming | Verify EventSource in browser console |
-| Agent doesn't execute | Check API keys in `.env` file |
+| Issue                  | Solution                                           |
+| ---------------------- | -------------------------------------------------- |
+| Backend won't start    | Check Python 3.11+, activate venv, install FastAPI |
+| Frontend can't connect | Ensure backend runs on port 8000, check CORS       |
+| Events not streaming   | Verify EventSource in browser console              |
+| Agent doesn't execute  | Check API keys in `.env` file                      |
 
 ---
 
 ## 📖 Documentation
 
+- **[docs/architecture.md](./docs/architecture.md)**: Architecture diagrams, runtime sequence, and component map
 - **[INTEGRATION_GUIDE.md](./INTEGRATION_GUIDE.md)**: Comprehensive integration docs
 - **[plan.md](./plan.md)**: Original project plan
 - **[task.md](./task.md)**: Development tasks
@@ -359,10 +373,10 @@ This project is part of an AI/ML learning initiative.
 
 ## 🔗 Quick Links
 
-| Resource | URL |
-|----------|-----|
-| Frontend | http://localhost:8080 |
-| Backend | http://localhost:8000 |
+| Resource | URL                        |
+| -------- | -------------------------- |
+| Frontend | http://localhost:8080      |
+| Backend  | http://localhost:8000      |
 | API Docs | http://localhost:8000/docs |
 
 ---

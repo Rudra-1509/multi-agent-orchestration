@@ -1,59 +1,207 @@
-from langchain_community.agent_toolkits import FileManagementToolkit
 import os
 
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-BASE_DIR = os.path.join(ROOT_DIR, os.pardir, os.pardir, os.pardir, "workspace")
-BASE_DIR = os.path.abspath(BASE_DIR)
+from langchain.tools import BaseTool
+from pydantic import Field
 
-INPUT_DIR = os.path.join(BASE_DIR, "inputs")
-OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
-LOG_DIR = os.path.join(BASE_DIR, "logs")
-TEMP_DIR = os.path.join(BASE_DIR, "temp")
+from app.storage.factory import get_storage_backend
+
+
+storage = get_storage_backend()
+
+
+class BaseFileTool(BaseTool):
+
+    directory: str = Field(...)
+
+    def build_path(self, filename: str) -> str:
+        """
+        Convert logical filename into logical storage path.
+        """
+
+        filename = filename.strip("/")
+
+        return f"{self.directory}/{filename}"
+
+
+
+class ReadInputFileTool(BaseFileTool):
+
+    name: str = "input_read_file"
+
+    description: str = (
+        "Read files from the inputs directory. "
+        "Use this for reading uploaded input data."
+    )
+
+    directory: str = "inputs"
+
+    def _run(self, filename: str) -> str:
+
+        path = self.build_path(filename)
+
+        data = storage.read_file(path)
+
+        return data.decode("utf-8")
+
+
+class ListInputDirectoryTool(BaseFileTool):
+
+    name: str = "input_list_directory"
+
+    description: str = (
+        "List files inside the inputs directory."
+    )
+
+    directory: str = "inputs"
+
+    def _run(self, path: str = ""):
+
+        logical_path = self.build_path(path)
+
+        return storage.list_files(logical_path)
+
+
+class WriteOutputFileTool(BaseFileTool):
+
+    name: str = "output_write_file"
+
+    description: str = (
+        "Write files into the outputs directory. "
+        "Use this for saving final results."
+    )
+
+    directory: str = "outputs"
+
+    def _run(self, filename: str, content: str):
+
+        path = self.build_path(filename)
+
+        storage.write_file(
+            path,
+            content.encode("utf-8")
+        )
+
+        return f"Successfully wrote file to {path}"
+
+
+class ListOutputDirectoryTool(BaseFileTool):
+
+    name: str = "output_list_directory"
+
+    description: str = (
+        "List files inside the outputs directory."
+    )
+
+    directory: str = "outputs"
+
+    def _run(self, path: str = ""):
+
+        logical_path = self.build_path(path)
+
+        return storage.list_files(logical_path)
+
+
+class ReadTempFileTool(BaseFileTool):
+
+    name: str = "temp_read_file"
+
+    description: str = (
+        "Read temporary intermediate files."
+    )
+
+    directory: str = "temp"
+
+    def _run(self, filename: str):
+
+        path = self.build_path(filename)
+
+        data = storage.read_file(path)
+
+        return data.decode("utf-8")
+
+
+class WriteTempFileTool(BaseFileTool):
+
+    name: str = "temp_write_file"
+
+    description: str = (
+        "Write temporary intermediate files."
+    )
+
+    directory: str = "temp"
+
+    def _run(self, filename: str, content: str):
+
+        path = self.build_path(filename)
+
+        storage.write_file(
+            path,
+            content.encode("utf-8")
+        )
+
+        return f"Successfully wrote temp file to {path}"
+
+
+class DeleteTempFileTool(BaseFileTool):
+
+    name: str = "temp_delete_file"
+
+    description: str = (
+        "Delete temporary files."
+    )
+
+    directory: str = "temp"
+
+    def _run(self, filename: str):
+
+        path = self.build_path(filename)
+
+        storage.delete_file(path)
+
+        return f"Deleted temp file {path}"
+
+class WriteLogFileTool(BaseFileTool):
+
+    name: str = "log_write_file"
+
+    description: str = (
+        "Write execution logs and important events."
+    )
+
+    directory: str = "logs"
+
+    def _run(self, filename: str, content: str):
+
+        path = self.build_path(filename)
+
+        storage.write_file(
+            path,
+            content.encode("utf-8")
+        )
+
+        return f"Successfully wrote log file to {path}"
 
 def get_file_tools():
-    os.makedirs(BASE_DIR, exist_ok=True)
-
-    for d in [INPUT_DIR, OUTPUT_DIR, LOG_DIR, TEMP_DIR]:
-        os.makedirs(d, exist_ok=True)
-
-    def prefix_tools(tools, prefix):
-        for tool in tools:
-            tool.name = f"{prefix}_{tool.name}"
-        return tools
-
-    def enhance_descriptions(tools, context):
-        for tool in tools:
-            tool.description += f" (Use for {context})"
-        return tools
-
-    file_input_tools = FileManagementToolkit(
-        root_dir=INPUT_DIR,
-        selected_tools=["read_file", "list_directory"]
-    ).get_tools()
-
-    file_output_tools = FileManagementToolkit(
-        root_dir=OUTPUT_DIR,
-        selected_tools=["write_file", "list_directory"]
-    ).get_tools()
-
-    file_temp_tools = FileManagementToolkit(
-        root_dir=TEMP_DIR,
-        selected_tools=["read_file", "write_file", "file_delete"]
-    ).get_tools()
-
-    file_log_tools = FileManagementToolkit(
-        root_dir=LOG_DIR,
-        selected_tools=["write_file"]
-    ).get_tools()
-
-    file_input_tools = enhance_descriptions(prefix_tools(file_input_tools, "input"), "reading input data")
-    file_output_tools = enhance_descriptions(prefix_tools(file_output_tools, "output"), "saving final results")
-    file_temp_tools = enhance_descriptions(prefix_tools(file_temp_tools, "temp"), "temporary intermediate work")
-    file_log_tools = enhance_descriptions(prefix_tools(file_log_tools, "log"), "logging important events")
 
     return {
-        "input": file_input_tools,
-        "output": file_output_tools,
-        "temp": file_temp_tools,
-        "log": file_log_tools
+
+        "input": [
+            ReadInputFileTool(),
+            ListInputDirectoryTool()
+        ],
+
+        "output": [
+            WriteOutputFileTool(),
+            ListOutputDirectoryTool()
+        ],
+
+        "temp": [
+            ReadTempFileTool(),
+            WriteTempFileTool(),
+            DeleteTempFileTool()
+        ],
+
+        "log": [
+            WriteLogFileTool()
+        ]
     }
