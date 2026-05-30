@@ -47,7 +47,8 @@ flowchart LR
     tavily["Tavily Search"]
     scrape["Requests / BeautifulSoup\nPlaywright fallback"]
     chroma[("Chroma vector store\nHuggingFace embeddings")]
-    files[("backend/workspace\ninputs, outputs, logs, temp")]
+    files[("Local output file system\nbackend/workspace: inputs, outputs, logs, temp")]
+    s3[("S3 cloud storage\nbucket-backed artifacts and files")]
     repl["Python REPL"]
   end
 
@@ -66,8 +67,11 @@ flowchart LR
   executor -.-> chroma
   executor -.-> repl
   executor -.-> files
+  executor -.-> s3
   writer -.-> files
+  writer -.-> s3
   runner -->|artifact markdown| files
+  runner -->|cloud artifact copy| s3
 ```
 
 ## Runtime sequence
@@ -83,6 +87,8 @@ sequenceDiagram
   participant Graph as LangGraph supervisor graph
   participant Worker as Selected worker graph
   participant Tools as External tools/storage
+  participant LocalFS as Local output file system
+  participant S3 as S3 cloud storage
 
   User->>UI: Enter task prompt
   UI->>Provider: start(prompt)
@@ -97,12 +103,15 @@ sequenceDiagram
   Graph->>Graph: Supervisor asks LLM for route
   Graph->>Worker: Execute selected specialist graph
   Worker->>Tools: Search, scrape, memory, REPL, or file operations
+  Worker->>LocalFS: Read/write local workspace and output files when needed
+  Worker->>S3: Upload or retrieve cloud-backed files when configured
   Worker-->>Graph: Worker output in AgentState
   Graph->>Graph: Aggregate final response
   Graph-->>Runner: Final state
 
   Runner->>Store: Persist selected agent, final response, events
-  Runner->>Tools: Write markdown artifact to outputs
+  Runner->>LocalFS: Write markdown artifact to local outputs
+  Runner->>S3: Mirror/persist artifact in cloud storage when configured
   API-->>Provider: Stream task events until done
   Provider->>UI: Update agent statuses, timeline, artifacts
   UI-->>User: Display final response artifact
@@ -110,15 +119,15 @@ sequenceDiagram
 
 ## Component map
 
-| Layer                     | Main files                                                                 | Responsibility                                                                                                                            |
-| ------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Frontend shell            | `frontend/src/routes/index.tsx`, `frontend/src/components/orchestration/*` | Renders the control-room layout, agent timeline, session sidebar, chat input, approval panel, and artifacts panel.                        |
-| Frontend state/API client | `frontend/src/context/orchestration-context.tsx`                           | Creates tasks, subscribes to SSE events, normalizes streamed events, tracks sessions, agent status, and artifacts.                        |
-| API server                | `backend/app/api/main.py`                                                  | Provides REST/SSE endpoints, stores task metadata in memory, runs graph work in the background, emits events, and writes final artifacts. |
-| Shared graph state        | `backend/app/graph/state.py`                                               | Defines the typed state exchanged by supervisor, worker graphs, and aggregation.                                                          |
-| Supervisor graph          | `backend/app/agents/superviser.py`                                         | Uses the configured chat model to route each request to a specialist and aggregate worker outputs.                                        |
-| Worker graphs             | `backend/app/agents/subagents/*.py`                                        | Encapsulate researcher, executor, writer, and analyst workflows.                                                                          |
-| Tools                     | `backend/app/tools/**`                                                     | Integrate Tavily search, web scraping, Chroma memory, Python execution, and workspace file management.                                    |
+| Layer                     | Main files                                                                 | Responsibility                                                                                                                                                                           |
+| ------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontend shell            | `frontend/src/routes/index.tsx`, `frontend/src/components/orchestration/*` | Renders the control-room layout, agent timeline, session sidebar, chat input, approval panel, and artifacts panel.                                                                       |
+| Frontend state/API client | `frontend/src/context/orchestration-context.tsx`                           | Creates tasks, subscribes to SSE events, normalizes streamed events, tracks sessions, agent status, and artifacts.                                                                       |
+| API server                | `backend/app/api/main.py`                                                  | Provides REST/SSE endpoints, stores task metadata in memory, runs graph work in the background, emits events, and writes final artifacts to local output storage and S3 when configured. |
+| Shared graph state        | `backend/app/graph/state.py`                                               | Defines the typed state exchanged by supervisor, worker graphs, and aggregation.                                                                                                         |
+| Supervisor graph          | `backend/app/agents/superviser.py`                                         | Uses the configured chat model to route each request to a specialist and aggregate worker outputs.                                                                                       |
+| Worker graphs             | `backend/app/agents/subagents/*.py`                                        | Encapsulate researcher, executor, writer, and analyst workflows.                                                                                                                         |
+| Tools                     | `backend/app/tools/**`                                                     | Integrate Tavily search, web scraping, Chroma memory, Python execution, local output/workspace file management, and S3-backed cloud storage.                                             |
 
 ## Data and event flow
 
@@ -128,11 +137,13 @@ sequenceDiagram
 4. The background runner invokes the compiled supervisor graph with an `AgentState` containing the query, messages, and event log.
 5. The supervisor routes to one worker graph (`researcher`, `executor`, `writer`, or `analyst`) or directly to aggregation.
 6. Worker outputs are merged back into the shared state, then the aggregate node synthesizes a final response.
-7. FastAPI stores the final response, writes a markdown artifact under `backend/workspace/outputs`, appends artifact/completion events, and the UI renders the completed timeline.
+7. FastAPI stores the final response, writes a markdown artifact under `backend/workspace/outputs`, mirrors or persists the same artifact to the configured S3 bucket when cloud storage is enabled, appends artifact/completion events, and the UI renders the completed timeline.
 
 ## Notes and constraints
 
-- Task records are stored in process memory and expire based on `TASK_TTL_SECONDS`, so they are not durable across backend restarts.
+- Task records are stored in process memory and expire based on `TASK_TTL_SECONDS`, so task status/event history is not durable across backend restarts even when artifacts are persisted locally or in S3.
 - `TASK_TIMEOUT_SECONDS` bounds graph execution inside the background thread.
 - The backend requires `GROQ_API_TOKEN` or `GROQ_API_KEY` at startup; Tavily search is optional but search results degrade if `TAVILY_API_KEY` is missing.
+- Local file artifacts continue to live under `backend/workspace`, while S3 provides a cloud-backed copy or target for files/artifacts that need to survive host/container lifecycle changes.
+- S3 storage depends on the project's configured AWS/S3 environment variables and bucket permissions; when those are unavailable, the architecture still supports the local file-system path.
 - Chroma memory is persisted under `backend/app/tools/memory/chroma_db` when the memory tool initializes successfully.

@@ -36,7 +36,8 @@ flowchart LR
   executor --> aggregate
   writer --> aggregate
   analyst --> aggregate
-  aggregate --> artifacts[(Markdown Artifacts)]
+  aggregate --> local[(Local output file system)]
+  aggregate --> s3[(S3 cloud storage)]
   api --> events[(Task Event Log)]
 ```
 
@@ -134,6 +135,11 @@ Create `backend/.env`:
 ```
 GROQ_API_TOKEN=your_groq_api_key
 TAVILY_API_KEY=your_tavily_api_key
+# Optional: enable cloud artifact/file persistence alongside local outputs.
+AWS_ACCESS_KEY_ID=your_aws_access_key_id
+AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
+AWS_REGION=your_aws_region
+S3_BUCKET_NAME=your_s3_bucket_name
 ```
 
 ### Frontend API URL
@@ -299,6 +305,7 @@ npm run lint
 - **Groq/OpenAI**: LLM providers
 - **Tavily**: Web search integration
 - **Chroma**: Vector database for knowledge storage
+- **Local output file system + S3**: Artifact and file persistence targets
 
 ### Frontend
 
