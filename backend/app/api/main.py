@@ -29,7 +29,7 @@ DEFAULT_CORS_ORIGINS = [
     "http://127.0.0.1:4173",
     "http://localhost:8080",
     "http://127.0.0.1:8080",
-    "http://localhost:8080",
+    "https://multi-agent-orchestration.rudranilmn1509.workers.dev",
 ]
 cors_origins_env = os.getenv("CORS_ALLOW_ORIGINS", "")
 ALLOW_ORIGINS = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()] or DEFAULT_CORS_ORIGINS
