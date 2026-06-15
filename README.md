@@ -25,19 +25,24 @@ For the full project diagram, runtime sequence, and component map, see [docs/arc
 flowchart LR
   user([User]) --> ui[Frontend: TanStack Start UI]
   ui -->|POST /api/task| api[FastAPI Backend]
-  ui <-->|"SSE /api/stream/{task_id}"| api
+  ui <-->|SSE stream| api
+
   api --> runner[Background Task Runner]
-  runner --> graph[LangGraph Supervisor]
-  graph --> researcher[Researcher]
-  graph --> executor[Executor]
-  graph --> writer[Writer]
-  graph --> analyst[Analyst]
+  runner --> supervisor[LangGraph Supervisor]
+
+  supervisor --> researcher[Researcher]
+  supervisor --> executor[Executor]
+  supervisor --> writer[Writer]
+  supervisor --> analyst[Analyst]
+
   researcher --> aggregate[Aggregate Response]
   executor --> aggregate
   writer --> aggregate
   analyst --> aggregate
+
   aggregate --> local[(Local output file system)]
   aggregate --> s3[(S3 cloud storage)]
+
   api --> events[(Task Event Log)]
 ```
 
