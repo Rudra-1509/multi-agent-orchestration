@@ -25,7 +25,7 @@ For the full project diagram, runtime sequence, and component map, see [docs/arc
 flowchart LR
   user([User]) --> ui[Frontend: TanStack Start UI]
   ui -->|POST /api/task| api[FastAPI Backend]
-  ui <-->|SSE /api/stream/{task_id}| api
+  ui <-->|"SSE /api/stream/{task_id}"| api
   api --> runner[Background Task Runner]
   runner --> graph[LangGraph Supervisor]
   graph --> researcher[Researcher]
