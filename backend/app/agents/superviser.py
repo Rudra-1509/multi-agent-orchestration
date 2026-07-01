@@ -20,7 +20,7 @@ load_dotenv()
 def get_llm() -> ChatGroq:
     """Lazily initialize Groq client so imports/tests work without env at import time."""
     groq_token = os.getenv("GROQ_API_TOKEN")
-    llm_model = os.getenv("LLM_MODEL")
+    llm_model = os.getenv("LLM_MODEL","openai/gpt-oss-20b")
     if not groq_token:
         raise RuntimeError(
             "Missing Groq API key. Set GROQ_API_TOKEN (or GROQ_API_KEY) in your environment."
