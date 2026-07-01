@@ -19,12 +19,13 @@ load_dotenv()
 
 def get_llm() -> ChatGroq:
     """Lazily initialize Groq client so imports/tests work without env at import time."""
-    groq_token = os.getenv("GROQ_API_TOKEN") or os.getenv("GROQ_API_KEY")
+    groq_token = os.getenv("GROQ_API_TOKEN")
+    llm_model = os.getenv("LLM_MODEL")
     if not groq_token:
         raise RuntimeError(
             "Missing Groq API key. Set GROQ_API_TOKEN (or GROQ_API_KEY) in your environment."
         )
-    return ChatGroq(model="llama-3.1-8b-instant", api_key=groq_token)
+    return ChatGroq(model=llm_model, api_key=groq_token)
 
 # Build worker graphs
 researcher_graph = build_researcher()
